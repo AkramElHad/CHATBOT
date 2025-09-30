@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Image from "next/image";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,6 +28,19 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <header className="sticky top-0 z-20 border-b" style={{ background: "var(--brand)", borderColor: "rgba(255,255,255,0.18)" }}>
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div className="h-14 sm:h-16 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Image src="/ESIC.jpg" alt="ESIC" width={36} height={36} className="rounded-md object-cover ring-2 ring-white/50" />
+                <div className="flex flex-col leading-tight text-white">
+                  <span className="text-sm sm:text-base font-semibold">Assistant Campus</span>
+                  <span className="text-[11px] sm:text-xs text-white/80">Ecole Supérieure d'Informatique et de Commerce</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
         {children}
       </body>
     </html>
