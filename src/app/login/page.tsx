@@ -1,15 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message) {
+      setSuccessMessage(message);
+    }
+  }, [searchParams]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +54,11 @@ export default function LoginPage() {
           <p className="text-sm text-[#6b7280] mt-1">Accédez à votre assistant campus</p>
         </div>
         <form onSubmit={onSubmit} className="p-6 sm:p-8 pt-0 space-y-4">
+          {successMessage && (
+            <div className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg p-2.5">
+              {successMessage}
+            </div>
+          )}
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5">
               {error}
@@ -57,7 +71,6 @@ export default function LoginPage() {
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl focus:outline-none focus:ring-2 bg-white"
               style={{ border: "1px solid var(--border)" }}
-              placeholder="akram"
             />
           </div>
           <div className="space-y-1.5">
@@ -76,6 +89,18 @@ export default function LoginPage() {
           </button>
           <p className="text-[11px] text-[#6b7280] text-center">Identifiants par défaut: akram / akram123</p>
         </form>
+        <div className="p-6 sm:p-8 pt-0 border-t" style={{ borderColor: "var(--border)" }}>
+          <p className="text-sm text-[#6b7280] text-center">
+            Nouveau sur la plateforme ?{" "}
+            <button 
+              onClick={() => router.push("/signup")}
+              className="text-sm font-medium hover:underline"
+              style={{ color: "var(--brand-700)" }}
+            >
+              Créer un compte
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

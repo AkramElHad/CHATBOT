@@ -22,11 +22,12 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 // Minimal, explicit CORS for localhost and 127.0.0.1 with credentials
 app.use((req, res, next) => {
   const origin = req.headers.origin || "";
+  console.log("CORS request from:", origin, "to:", req.path);
   if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
     res.setHeader("Access-Control-Max-Age", "86400");
     res.setHeader("Vary", "Origin");
   }
@@ -155,16 +156,73 @@ app.post("/api/auth/logout", (req, res) => {
   }
 });
 
+// Check if user exists endpoint
+app.post("/api/auth/check-user", (req, res) => {
+  try {
+    const username = String(req.body?.username || "").trim();
+    if (!username) return res.status(400).json({ error: "Identifiant requis" });
+
+    const user = db.prepare("SELECT id FROM users WHERE username=?").get(username);
+    if (user) {
+      return res.status(200).json({ exists: true });
+    }
+    return res.status(404).json({ exists: false });
+  } catch (e) {
+    return res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// Signup endpoint
+app.post("/api/auth/signup", (req, res) => {
+  try {
+    const { firstName, lastName, username, password } = req.body;
+    
+    if (!firstName?.trim() || !lastName?.trim() || !username?.trim() || !password) {
+      return res.status(400).json({ error: "Tous les champs sont obligatoires" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 6 caractères" });
+    }
+
+    // Vérifier si l'utilisateur existe déjà
+    const existing = db.prepare("SELECT id FROM users WHERE username=?").get(username.trim());
+    if (existing) {
+      return res.status(409).json({ error: "Cet identifiant est déjà utilisé" });
+    }
+
+    // Créer le nouvel utilisateur
+    const hash = bcrypt.hashSync(password, 10);
+    const stmt = db.prepare(`
+      INSERT INTO users (username, password_hash, first_name, last_name, created_at) 
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    
+    stmt.run(
+      username.trim(),
+      hash,
+      firstName.trim(),
+      lastName.trim(),
+      new Date().toISOString()
+    );
+
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // Ensure default user exists: akram / akram123
 try {
   const existing = db.prepare("SELECT * FROM users WHERE username=?").get("akram");
   const hash = bcrypt.hashSync("akram123", 10);
   if (!existing) {
-    db.prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)").run("akram", hash, new Date().toISOString());
+    db.prepare("INSERT INTO users (username, password_hash, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?)").run("akram", hash, "Akram", "Admin", new Date().toISOString());
     // eslint-disable-next-line no-console
     console.log("Seeded default user: akram / akram123");
   } else {
-    db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash, existing.id);
+    // Mettre à jour l'utilisateur existant avec les nouveaux champs
+    db.prepare("UPDATE users SET password_hash=?, first_name=?, last_name=? WHERE id=?").run(hash, "Akram", "Admin", existing.id);
     // eslint-disable-next-line no-console
     console.log("Updated default user password: akram / akram123");
   }

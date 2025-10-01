@@ -1,8 +1,12 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
-const dbDir = path.join(process.cwd(), "server", "data");
+// Resolve DB path relative to this file location to avoid process.cwd() pitfalls
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dbDir = path.join(__dirname, "data");
 const dbPath = path.join(dbDir, "app.db");
 
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
@@ -31,6 +35,8 @@ export function ensureSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS sessions (
@@ -41,6 +47,22 @@ export function ensureSchema() {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
+  
+  // Migration pour ajouter les colonnes first_name et last_name si elles n'existent pas
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all();
+    const hasFirstName = columns.some(col => col.name === 'first_name');
+    const hasLastName = columns.some(col => col.name === 'last_name');
+    
+    if (!hasFirstName) {
+      db.exec("ALTER TABLE users ADD COLUMN first_name TEXT DEFAULT ''");
+    }
+    if (!hasLastName) {
+      db.exec("ALTER TABLE users ADD COLUMN last_name TEXT DEFAULT ''");
+    }
+  } catch (e) {
+    // Ignore migration errors
+  }
 }
 
 export function upsertAnswer(key, value) {

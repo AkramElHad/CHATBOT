@@ -132,7 +132,8 @@ export function normalize(text: string) {
 }
 
 export function authenticateUser(username: string, password: string) {
-  const user = db.prepare("SELECT * FROM users WHERE username=?").get(username);
+  const trimmedUsername = String(username || "").trim();
+  const user = db.prepare("SELECT * FROM users WHERE username=?").get(trimmedUsername);
   if (!user) return null;
   const ok = bcrypt.compareSync(password, user.password_hash);
   if (!ok) return null;
