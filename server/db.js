@@ -1,9 +1,9 @@
-import Database from "better-sqlite3";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Resolve DB path relative to this file location to avoid process.cwd() pitfalls
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbDir = path.join(__dirname, "data");
@@ -11,26 +11,42 @@ const dbPath = path.join(dbDir, "app.db");
 
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
-export const db = new Database(dbPath);
+let db; // instance async
 
-// Enable foreign keys
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+export async function initDb() {
+  db = await open({
+    filename: dbPath,
+    driver: sqlite3.Database,
+  });
 
-export function ensureSchema() {
-  db.exec(`
+  // Active les clés étrangères et journalisation WAL
+  await db.exec("PRAGMA journal_mode = WAL;");
+  await db.exec("PRAGMA foreign_keys = ON;");
+
+  await ensureSchema();
+  return db;
+}
+
+async function ensureSchema() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS answers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       key TEXT UNIQUE NOT NULL,
       value TEXT NOT NULL
     );
+
     CREATE TABLE IF NOT EXISTS logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      question TEXT NOT NULL,
+      chat_id TEXT,
+      user_id INTEGER,
+      role TEXT,
+      text TEXT,
       ip TEXT,
       matched INTEGER NOT NULL DEFAULT 0,
-      timestamp TEXT NOT NULL
+      timestamp TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -39,6 +55,7 @@ export function ensureSchema() {
       last_name TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -47,38 +64,43 @@ export function ensureSchema() {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
-  
-  // Migration pour ajouter les colonnes first_name et last_name si elles n'existent pas
+
+  // Migration pour logs
   try {
-    const columns = db.prepare("PRAGMA table_info(users)").all();
-    const hasFirstName = columns.some(col => col.name === 'first_name');
-    const hasLastName = columns.some(col => col.name === 'last_name');
-    
-    if (!hasFirstName) {
-      db.exec("ALTER TABLE users ADD COLUMN first_name TEXT DEFAULT ''");
+    const columns = await db.all("PRAGMA table_info(logs)");
+    const colNames = columns.map((c) => c.name);
+
+    if (!colNames.includes("chat_id")) {
+      await db.exec("ALTER TABLE logs ADD COLUMN chat_id TEXT");
     }
-    if (!hasLastName) {
-      db.exec("ALTER TABLE users ADD COLUMN last_name TEXT DEFAULT ''");
+    if (!colNames.includes("user_id")) {
+      await db.exec("ALTER TABLE logs ADD COLUMN user_id INTEGER");
+    }
+    if (!colNames.includes("role")) {
+      await db.exec("ALTER TABLE logs ADD COLUMN role TEXT DEFAULT 'user'");
+    }
+    if (!colNames.includes("text")) {
+      await db.exec("ALTER TABLE logs ADD COLUMN text TEXT DEFAULT ''");
     }
   } catch (e) {
-    // Ignore migration errors
+    console.error("Migration logs échouée:", e);
   }
 }
 
-export function upsertAnswer(key, value) {
-  const stmt = db.prepare(
+export async function upsertAnswer(key, value) {
+  await db.run(
     `INSERT INTO answers (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value=excluded.value`
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    [key, value]
   );
-  stmt.run(key, value);
 }
 
-export function getAllAnswers() {
-  return db.prepare("SELECT key, value FROM answers").all();
+export async function getAllAnswers() {
+  return await db.all("SELECT key, value FROM answers");
 }
 
-export function findBestAnswer(normalizedQuestion) {
-  const rows = getAllAnswers();
+export async function findBestAnswer(normalizedQuestion) {
+  const rows = await getAllAnswers();
   for (const row of rows) {
     const k = normalize(row.key);
     if (normalizedQuestion.includes(k) || k.includes(normalizedQuestion)) {
@@ -88,11 +110,20 @@ export function findBestAnswer(normalizedQuestion) {
   return null;
 }
 
-export function appendLog({ question, ip, matched, timestamp }) {
-  const stmt = db.prepare(
-    `INSERT INTO logs (question, ip, matched, timestamp) VALUES (?, ?, ?, ?)`
+export async function appendLog({
+  chatId,
+  userId,
+  role,
+  text,
+  ip,
+  matched,
+  timestamp,
+}) {
+  await db.run(
+    `INSERT INTO logs (chat_id, user_id, role, text, ip, matched, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [chatId, userId, role, text, ip || null, matched ? 1 : 0, timestamp]
   );
-  stmt.run(question, ip || null, matched ? 1 : 0, timestamp);
 }
 
 export function normalize(text) {
@@ -106,4 +137,5 @@ export function normalize(text) {
     .trim();
 }
 
-
+// ✅ exports explicites
+export { db, ensureSchema };

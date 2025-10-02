@@ -6,18 +6,53 @@ export async function GET(req: Request) {
   try {
     const cookies = req.headers.get("cookie") || "";
     const sessionId = cookies.split("sid=")[1]?.split(";")[0];
-    if (!sessionId) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    if (!sessionId) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const session = validateSession(sessionId);
-    if (!session) return NextResponse.json({ error: "Session invalide" }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: "Session invalide" }, { status: 401 });
+    }
 
-    const logs = db.prepare(
-      `SELECT id, question, matched, timestamp FROM logs WHERE user_id=? ORDER BY id DESC LIMIT 50`
-    ).all(session.user_id);
+    // Récupération des logs avec regroupement par chat_id
+    const rows = db
+      .prepare(
+        `SELECT id, chat_id, role, text, timestamp
+         FROM logs
+         WHERE user_id = ?
+         ORDER BY chat_id DESC, timestamp ASC`
+      )
+      .all(session.user_id);
 
-    return NextResponse.json({ logs });
+    // Regroupement par chat_id
+    const chats: {
+      chatId: string;
+      startedAt: string;
+      messages: { id: number; role: "user" | "assistant"; text: string }[];
+    }[] = [];
+
+    for (const row of rows) {
+      let chat = chats.find((c) => c.chatId === row.chat_id);
+      if (!chat) {
+        chat = {
+          chatId: row.chat_id,
+          startedAt: row.timestamp,
+          messages: [],
+        };
+        chats.push(chat);
+      }
+
+      chat.messages.push({
+        id: row.id,
+        role: row.role || "user",
+        text: row.text,
+      });
+    }
+
+    return NextResponse.json({ chats });
   } catch (e) {
+    console.error("Erreur /api/history:", e);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
-
-
