@@ -12,7 +12,9 @@ import {
   findBestAnswer,
   appendLog,
   normalize,
-} from "./db.js";
+  authenticateUser,
+  createSession,
+} from "./db-mysql.js";
 import bcrypt from "bcryptjs";
 import cookie from "cookie";
 import { randomUUID } from "crypto";
@@ -67,11 +69,12 @@ app.post("/api/chat", async (req, res) => {
     const sid = cookies.sid;
     if (!sid) return res.status(401).json({ error: "Non authentifié" });
 
-    const session = await db.get(
+    const [sessionRows] = await db.execute(
       "SELECT s.*, u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at > ?",
       [sid, new Date().toISOString()]
     );
-    if (!session) return res.status(401).json({ error: "Session invalide" });
+    if (sessionRows.length === 0) return res.status(401).json({ error: "Session invalide" });
+    const session = sessionRows[0];
 
     const unsafe = String(req.body?.question || "");
     const sanitized = sanitizeHtml(unsafe, {
@@ -103,7 +106,7 @@ app.post("/api/chat", async (req, res) => {
 
 app.get("/api/health", async (_req, res) => {
   try {
-    await db.get("SELECT 1");
+    await db.execute("SELECT 1");
     res.json({ ok: true });
   } catch {
     res.status(500).json({ ok: false });
@@ -116,29 +119,22 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const username = String(req.body?.username || "").trim();
     const password = String(req.body?.password || "");
+    console.log("🔐 Login attempt:", { username, password: password ? "***" : "empty" });
+    
     if (!username || !password)
       return res.status(400).json({ error: "Identifiants requis" });
 
-    const user = await db.get("SELECT * FROM users WHERE username=?", [
-      username,
-    ]);
-    if (!user) return res.status(401).json({ error: "Identifiant incorrect" });
+    const user = await authenticateUser(username, password);
+    console.log("👤 User authentication result:", user ? "SUCCESS" : "FAILED");
+    
+    if (!user) return res.status(401).json({ error: "Identifiant ou mot de passe incorrect" });
 
-    const ok = bcrypt.compareSync(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: "Mot de passe incorrect" });
-
-    const id = randomUUID();
-    const now = new Date();
-    const expires = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    await db.run(
-      "INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-      [id, user.id, now.toISOString(), expires.toISOString()]
-    );
+    const sessionId = await createSession(user.id);
+    console.log("🎫 Session created:", sessionId);
 
     res.setHeader(
       "Set-Cookie",
-      cookie.serialize("sid", id, {
+      cookie.serialize("sid", sessionId, {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
@@ -156,7 +152,7 @@ app.post("/api/auth/logout", async (req, res) => {
   try {
     const cookies = cookie.parse(req.headers.cookie || "");
     const sid = cookies.sid;
-    if (sid) await db.run("DELETE FROM sessions WHERE id=?", [sid]);
+    if (sid) await db.execute("DELETE FROM sessions WHERE id=?", [sid]);
     res.setHeader(
       "Set-Cookie",
       cookie.serialize("sid", "", { path: "/", maxAge: 0 })
@@ -172,11 +168,44 @@ app.post("/api/auth/check-user", async (req, res) => {
     const username = String(req.body?.username || "").trim();
     if (!username) return res.status(400).json({ error: "Identifiant requis" });
 
-    const user = await db.get("SELECT id FROM users WHERE username=?", [
+    const [rows] = await db.execute("SELECT id FROM utilisateurs WHERE identifiant=?", [
       username,
     ]);
-    return res.json({ exists: !!user });
+    return res.json({ exists: rows.length > 0 });
   } catch (e) {
+    return res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+app.get("/api/auth/status", async (req, res) => {
+  try {
+    const cookies = cookie.parse(req.headers.cookie || "");
+    const sid = cookies.sid;
+    
+    if (!sid) {
+      return res.status(401).json({ error: "Non authentifié" });
+    }
+
+    const [rows] = await db.execute(
+      "SELECT s.id, s.user_id, s.expires_at, u.identifiant, u.prenom, u.nom FROM sessions s JOIN utilisateurs u ON s.user_id = u.id WHERE s.id = ? AND s.expires_at > NOW()",
+      [sid]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({ error: "Session expirée" });
+    }
+
+    return res.json({ 
+      authenticated: true, 
+      user: {
+        id: rows[0].user_id,
+        username: rows[0].identifiant,
+        firstName: rows[0].prenom,
+        lastName: rows[0].nom
+      }
+    });
+  } catch (e) {
+    console.error("Erreur vérification session:", e);
     return res.status(500).json({ error: "Erreur serveur" });
   }
 });
@@ -199,21 +228,20 @@ app.post("/api/auth/signup", async (req, res) => {
       return res.status(400).json({ error: "Mot de passe trop court" });
     }
 
-    const existing = await db.get("SELECT id FROM users WHERE username=?", [
+    const [existingRows] = await db.execute("SELECT id FROM utilisateurs WHERE identifiant=?", [
       username.trim(),
     ]);
-    if (existing)
+    if (existingRows.length > 0)
       return res.status(409).json({ error: "Identifiant déjà utilisé" });
 
     const hash = bcrypt.hashSync(password, 10);
-    await db.run(
-      "INSERT INTO users (username, password_hash, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?)",
+    await db.execute(
+      "INSERT INTO utilisateurs (identifiant, password, prenom, nom) VALUES (?, ?, ?, ?)",
       [
         username.trim(),
         hash,
         firstName.trim(),
         lastName.trim(),
-        new Date().toISOString(),
       ]
     );
 
@@ -229,37 +257,32 @@ app.post("/api/auth/signup", async (req, res) => {
 const startServer = async () => {
   await initDb();
 
+  // Seed user akram/akram123 dans la table utilisateurs
   try {
-    const answersRaw = fs.readFileSync(answersPath, "utf-8");
-    const answersJson = JSON.parse(answersRaw);
-    for (const [k, v] of Object.entries(answersJson)) {
-      await upsertAnswer(String(k), String(v));
-    }
-  } catch {}
-
-  // Seed user akram/akram123
-  try {
-    const existing = await db.get("SELECT * FROM users WHERE username=?", [
+    const [existingRows] = await db.execute("SELECT * FROM utilisateurs WHERE identifiant=?", [
       "akram",
     ]);
     const hash = bcrypt.hashSync("akram123", 10);
-    if (!existing) {
-      await db.run(
-        "INSERT INTO users (username, password_hash, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?)",
-        ["akram", hash, "Akram", "Admin", new Date().toISOString()]
+    if (existingRows.length === 0) {
+      await db.execute(
+        "INSERT INTO utilisateurs (identifiant, password, prenom, nom) VALUES (?, ?, ?, ?)",
+        ["akram", hash, "Akram", "Admin"]
       );
       console.log("Seeded default user: akram / akram123");
     } else {
-      await db.run(
-        "UPDATE users SET password_hash=?, first_name=?, last_name=? WHERE id=?",
-        [hash, "Akram", "Admin", existing.id]
+      await db.execute(
+        "UPDATE utilisateurs SET password=?, prenom=?, nom=? WHERE id=?",
+        [hash, "Akram", "Admin", existingRows[0].id]
       );
       console.log("Updated default user password: akram / akram123");
     }
-  } catch {}
+  } catch (error) {
+    console.error("Error seeding user:", error);
+  }
 
   app.listen(PORT, () => {
     console.log(`API server listening on http://localhost:${PORT}`);
+    console.log("Using MySQL database with FAQ data");
   });
 };
 
