@@ -14,6 +14,7 @@ import {
   normalize,
   authenticateUser,
   createSession,
+  getAllAnswers,
 } from "./db-mysql.js";
 import bcrypt from "bcryptjs";
 import cookie from "cookie";
@@ -70,8 +71,8 @@ app.post("/api/chat", async (req, res) => {
     if (!sid) return res.status(401).json({ error: "Non authentifié" });
 
     const [sessionRows] = await db.execute(
-      "SELECT s.*, u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at > ?",
-      [sid, new Date().toISOString()]
+      "SELECT s.*, u.identifiant as username FROM sessions s JOIN utilisateurs u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > NOW()",
+      [sid]
     );
     if (sessionRows.length === 0) return res.status(401).json({ error: "Session invalide" });
     const session = sessionRows[0];
@@ -100,6 +101,30 @@ app.post("/api/chat", async (req, res) => {
     return res.json({ answer: response });
   } catch (e) {
     console.error("Erreur /api/chat:", e);
+    return res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// Retourne les questions/réponses de la table FAQ (utilisées comme suggestions)
+app.get("/api/faq", async (req, res) => {
+  try {
+    const cookies = cookie.parse(req.headers.cookie || "");
+    const sid = cookies.sid;
+    if (!sid) return res.status(401).json({ error: "Non authentifié" });
+
+    // Vérifier que la session est valide
+    const [sessionRows] = await db.execute(
+      "SELECT s.id FROM sessions s WHERE s.id = ? AND s.expires_at > NOW()",
+      [sid]
+    );
+    if (sessionRows.length === 0)
+      return res.status(401).json({ error: "Session invalide" });
+
+    const rows = await getAllAnswers();
+    // rows: [{ question, answer }]
+    return res.json({ faq: rows });
+  } catch (e) {
+    console.error("Erreur /api/faq:", e);
     return res.status(500).json({ error: "Erreur serveur" });
   }
 });

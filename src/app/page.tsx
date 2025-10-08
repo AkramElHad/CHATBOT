@@ -10,14 +10,7 @@ type ChatHistory = {
   messages: Message[];
 };
 
-const SUGGESTIONS = [
-  "Horaires bibliothèque",
-  "Horaires resto U",
-  "Contact scolarité",
-  "Règlement campus",
-  "Dates importantes",
-  "Formations proposées",
-];
+const SUGGESTIONS: string[] = [];
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,6 +19,7 @@ export default function Home() {
   const listRef = useRef<HTMLDivElement>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [faq, setFaq] = useState<{ key: string; value: string }[]>([]);
   const [history, setHistory] = useState<ChatHistory[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string>(uuidv4());
 
@@ -46,6 +40,24 @@ export default function Home() {
       }
     })();
   }, []);
+
+  // Charger les questions FAQ pour suggestions dès qu'on est authentifié
+  useEffect(() => {
+    (async () => {
+      if (authed !== true) return;
+      try {
+        const res = await fetch("http://localhost:4000/api/faq", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFaq(Array.isArray(data.faq) ? data.faq : []);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, [authed]);
 
   useEffect(() => {
     if (authed === false && typeof window !== "undefined") {
@@ -225,7 +237,7 @@ export default function Home() {
                 Posez-moi vos questions sur l'école, les horaires, les services...
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md mx-auto">
-                {SUGGESTIONS.map((suggestion) => (
+                {(faq.length > 0 ? faq.map(f => f.question) : SUGGESTIONS).map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => send(suggestion)}

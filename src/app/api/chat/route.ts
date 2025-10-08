@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       userId: session.user_id,
       role: "user",
       text: question,
-      matched: 1,
+      matched: true,
       timestamp: new Date().toISOString(),
       ip:
         req.headers.get("x-forwarded-for") ||

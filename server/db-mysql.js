@@ -39,7 +39,9 @@ export async function upsertAnswer(key, value) {
 
 export async function getAllAnswers() {
   try {
-    const [rows] = await db.execute("SELECT questions as key, reponses as value FROM faq WHERE langue = 'fr'");
+    const [rows] = await db.execute(
+      "SELECT questions AS question, reponses AS answer FROM faq WHERE langue = 'fr'"
+    );
     return rows;
   } catch (error) {
     console.error("Error getting all answers:", error);
@@ -49,13 +51,18 @@ export async function getAllAnswers() {
 
 export async function findBestAnswer(normalizedQuestion) {
   try {
+    // Récupérer toutes les entrées FAQ et faire la normalisation côté JS
     const [rows] = await db.execute(
-      "SELECT reponses FROM faq WHERE langue = 'fr' AND (LOWER(questions) LIKE ? OR LOWER(reponses) LIKE ?) LIMIT 1",
-      [`%${normalizedQuestion}%`, `%${normalizedQuestion}%`]
+      "SELECT questions, reponses FROM faq WHERE langue = 'fr'"
     );
-    
-    if (rows.length > 0) {
-      return rows[0].reponses;
+
+    const target = String(normalizedQuestion || "").toLowerCase();
+    for (const row of rows) {
+      const qNorm = normalize(String(row.questions || ""));
+      const aNorm = normalize(String(row.reponses || ""));
+      if (qNorm.includes(target) || aNorm.includes(target)) {
+        return row.reponses;
+      }
     }
     return null;
   } catch (error) {
@@ -77,7 +84,7 @@ export async function appendLog({
     // Insérer d'abord l'utilisateur s'il n'existe pas
     if (userId) {
       await db.execute(
-        "INSERT IGNORE INTO utilisateurs (id, nom, prenom, email) VALUES (?, 'User', 'Unknown', 'user@example.com')",
+        "INSERT IGNORE INTO utilisateurs (id, nom, prenom) VALUES (?, 'User', 'Unknown')",
         [userId]
       );
     }
