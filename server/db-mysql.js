@@ -1,5 +1,14 @@
 import mysql from "mysql2/promise";
-import { dbConfig } from "./config.js";
+// Configuration directe pour utiliser chatbot_campus
+const dbConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'chatbot_campus',
+  port: process.env.DB_PORT || 3306,
+  charset: 'utf8mb4',
+  timezone: '+00:00'
+};
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -176,6 +185,21 @@ export async function createSession(userId) {
   } catch (error) {
     console.error("Error creating session:", error);
     throw error;
+  }
+}
+
+// Fonction de validation de session
+export async function validateSession(sessionId) {
+  try {
+    const [rows] = await db.execute(
+      "SELECT s.*, u.identifiant as username FROM sessions s JOIN utilisateurs u ON u.id=s.user_id WHERE s.id=? AND s.expires_at > NOW()",
+      [sessionId]
+    );
+    
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error("Error validating session:", error);
+    return null;
   }
 }
 

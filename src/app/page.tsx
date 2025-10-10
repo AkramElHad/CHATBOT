@@ -320,20 +320,63 @@ export default function Home() {
                   <p className="text-gray-500 text-center py-8">Aucun historique disponible</p>
                 ) : (
                   <div className="space-y-2">
-                    {history.map((chat) => (
-                      <button
-                        key={chat.chatId}
-                        onClick={() => loadChat(chat)}
-                        className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <div className="text-sm font-medium text-gray-900">
-                          {chat.messages[0]?.text || "Conversation vide"}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {new Date(chat.startedAt).toLocaleDateString()}
-                        </div>
-                      </button>
-                    ))}
+                    {history.map((chat) => {
+                      // Trouver la première question (user) et la première réponse (assistant)
+                      const firstUserMessage = chat.messages.find(msg => msg.role === 'user');
+                      const firstAssistantMessage = chat.messages.find(msg => msg.role === 'assistant');
+                      
+                      return (
+                        <button
+                          key={chat.chatId}
+                          onClick={() => loadChat(chat)}
+                          className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <div className="space-y-2">
+                            {/* Question */}
+                            {firstUserMessage && (
+                              <div className="text-sm">
+                                <span className="font-medium text-blue-600">Q:</span>
+                                <span className="ml-1 text-gray-900">
+                                  {firstUserMessage.text.length > 80 
+                                    ? firstUserMessage.text.substring(0, 80) + "..." 
+                                    : firstUserMessage.text}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {/* Réponse */}
+                            {firstAssistantMessage && (
+                              <div className="text-sm">
+                                <span className="font-medium text-green-600">R:</span>
+                                <span className="ml-1 text-gray-700">
+                                  {firstAssistantMessage.text.length > 80 
+                                    ? firstAssistantMessage.text.substring(0, 80) + "..." 
+                                    : firstAssistantMessage.text}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {/* Si pas de messages, afficher un message par défaut */}
+                            {!firstUserMessage && !firstAssistantMessage && (
+                              <div className="text-sm text-gray-500 italic">
+                                Conversation vide
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Date */}
+                          <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+                            {new Date(chat.startedAt).toLocaleDateString('fr-FR', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -7,9 +7,13 @@ import {
   appendLog,
   normalize,
 } from "@/lib/db";
+import { ensureDatabaseInitialized } from "@/lib/init-db";
 
 export async function POST(req: Request) {
   try {
+    // Initialiser la base de données
+    await ensureDatabaseInitialized();
+    
     // Auth guard
     const cookies = req.headers.get("cookie") || "";
     const sessionId = cookies.split("sid=")[1]?.split(";")[0];
@@ -18,7 +22,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const session = validateSession(sessionId);
+    const session = await validateSession(sessionId);
     if (!session) {
       return NextResponse.json({ error: "Session invalide" }, { status: 401 });
     }
@@ -49,11 +53,11 @@ export async function POST(req: Request) {
     };
 
     // Trouver une réponse
-    let found = directAnswers[q] || findBestAnswer(q);
+    let found = directAnswers[q] || await findBestAnswer(q);
     const response = found || "Je n'ai pas encore la réponse à cette question.";
 
     // Sauvegarder la question (user)
-    appendLog({
+    await appendLog({
       chatId,
       userId: session.user_id,
       role: "user",
@@ -67,7 +71,7 @@ export async function POST(req: Request) {
     });
 
     // Sauvegarder la réponse (assistant)
-    appendLog({
+    await appendLog({
       chatId,
       userId: session.user_id,
       role: "assistant",

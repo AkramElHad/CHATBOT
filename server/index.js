@@ -138,6 +138,60 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+// Route pour récupérer l'historique des conversations
+app.get("/api/history", async (req, res) => {
+  try {
+    const cookies = cookie.parse(req.headers.cookie || "");
+    const sid = cookies.sid;
+    if (!sid) return res.status(401).json({ error: "Non authentifié" });
+
+    // Vérifier que la session est valide
+    const [sessionRows] = await db.execute(
+      "SELECT s.id, s.user_id, u.identifiant as username FROM sessions s JOIN utilisateurs u ON s.user_id = u.id WHERE s.id = ? AND s.expires_at > NOW()",
+      [sid]
+    );
+    if (sessionRows.length === 0) return res.status(401).json({ error: "Session invalide" });
+
+    const session = sessionRows[0];
+
+    // Récupérer toutes les conversations de l'utilisateur
+    const [conversations] = await db.execute(
+      "SELECT id, user_hach FROM conversation WHERE Utili_id = ? ORDER BY id DESC",
+      [session.user_id]
+    );
+
+    const chats = [];
+
+    // Pour chaque conversation, récupérer les messages
+    for (const conv of conversations) {
+      const [messages] = await db.execute(
+        "SELECT id, emetteur as role, texte as text, horodatage as timestamp FROM messages WHERE conversation_id = ? ORDER BY horodatage ASC",
+        [conv.id]
+      );
+
+      if (messages.length > 0) {
+        // Utiliser l'horodatage du premier message comme date de début
+        const startedAt = messages[0] ? messages[0].timestamp : new Date().toISOString();
+        
+        chats.push({
+          chatId: conv.user_hach,
+          startedAt: startedAt,
+          messages: messages.map(msg => ({
+            id: msg.id,
+            role: msg.role === 'bot' ? 'assistant' : msg.role,
+            text: msg.text
+          }))
+        });
+      }
+    }
+
+    return res.json({ chats });
+  } catch (e) {
+    console.error("Erreur /api/history:", e);
+    return res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // --- AUTH ---
 
 app.post("/api/auth/login", async (req, res) => {
