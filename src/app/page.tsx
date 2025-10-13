@@ -19,7 +19,7 @@ export default function Home() {
   const listRef = useRef<HTMLDivElement>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [faq, setFaq] = useState<{ key: string; value: string }[]>([]);
+  const [faq, setFaq] = useState<{ question: string; reponse: string }[]>([]);
   const [history, setHistory] = useState<ChatHistory[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string>(uuidv4());
 
@@ -30,7 +30,7 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/auth/status", {
+        const res = await fetch("http://localhost:3000/api/auth/status", {
           method: "GET",
           credentials: "include",
         });
@@ -46,15 +46,15 @@ export default function Home() {
     (async () => {
       if (authed !== true) return;
       try {
-        const res = await fetch("http://localhost:4000/api/faq", {
+        const res = await fetch("http://localhost:3000/api/faq", {
           credentials: "include",
         });
         if (res.ok) {
           const data = await res.json();
-          setFaq(Array.isArray(data.faq) ? data.faq : []);
+          setFaq(Array.isArray(data) ? data : []);
         }
       } catch (e) {
-        // ignore
+        console.error("Erreur de chargement FAQ:", e);
       }
     })();
   }, [authed]);
@@ -84,7 +84,7 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:4000/api/chat", {
+      const res = await fetch("http://localhost:3000/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -126,7 +126,7 @@ export default function Home() {
 
   async function logout() {
     try {
-      await fetch("http://localhost:4000/api/auth/logout", { 
+      await fetch("http://localhost:3000/api/auth/logout", {
         method: "POST",
         credentials: "include"
       });
@@ -139,7 +139,7 @@ export default function Home() {
   async function toggleHistory() {
     if (!showHistory) {
       try {
-        const res = await fetch("http://localhost:4000/api/history", {
+        const res = await fetch("http://localhost:3000/api/history", {
           credentials: "include"
         });
         const data = await res.json();
@@ -237,15 +237,16 @@ export default function Home() {
                 Posez-moi vos questions sur l'école, les horaires, les services...
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md mx-auto">
-                {(faq.length > 0 ? faq.map(f => f.question) : SUGGESTIONS).map((suggestion) => (
+                {(faq.length > 0 ? faq : []).map((f) => (
                   <button
-                    key={suggestion}
-                    onClick={() => send(suggestion)}
+                    key={f.question}
+                    onClick={() => send(f.question)}
                     className="p-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-left"
                   >
-                    {suggestion}
+                    {f.question}
                   </button>
                 ))}
+
               </div>
             </div>
           ) : (
@@ -255,11 +256,10 @@ export default function Home() {
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-                    msg.role === "user"
+                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${msg.role === "user"
                       ? "bg-blue-600 text-white"
                       : "bg-gray-100 text-gray-800"
-                  }`}
+                    }`}
                 >
                   {msg.text}
                 </div>
@@ -324,7 +324,7 @@ export default function Home() {
                       // Trouver la première question (user) et la première réponse (assistant)
                       const firstUserMessage = chat.messages.find(msg => msg.role === 'user');
                       const firstAssistantMessage = chat.messages.find(msg => msg.role === 'assistant');
-                      
+
                       return (
                         <button
                           key={chat.chatId}
@@ -337,25 +337,25 @@ export default function Home() {
                               <div className="text-sm">
                                 <span className="font-medium text-blue-600">Q:</span>
                                 <span className="ml-1 text-gray-900">
-                                  {firstUserMessage.text.length > 80 
-                                    ? firstUserMessage.text.substring(0, 80) + "..." 
+                                  {firstUserMessage.text.length > 80
+                                    ? firstUserMessage.text.substring(0, 80) + "..."
                                     : firstUserMessage.text}
                                 </span>
                               </div>
                             )}
-                            
+
                             {/* Réponse */}
                             {firstAssistantMessage && (
                               <div className="text-sm">
                                 <span className="font-medium text-green-600">R:</span>
                                 <span className="ml-1 text-gray-700">
-                                  {firstAssistantMessage.text.length > 80 
-                                    ? firstAssistantMessage.text.substring(0, 80) + "..." 
+                                  {firstAssistantMessage.text.length > 80
+                                    ? firstAssistantMessage.text.substring(0, 80) + "..."
                                     : firstAssistantMessage.text}
                                 </span>
                               </div>
                             )}
-                            
+
                             {/* Si pas de messages, afficher un message par défaut */}
                             {!firstUserMessage && !firstAssistantMessage && (
                               <div className="text-sm text-gray-500 italic">
@@ -363,7 +363,7 @@ export default function Home() {
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Date */}
                           <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
                             {new Date(chat.startedAt).toLocaleDateString('fr-FR', {

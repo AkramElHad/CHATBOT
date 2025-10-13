@@ -19,40 +19,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Appeler l'API backend
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:4000';
-    
-    try {
-      const response = await fetch(`${backendUrl}/api/auth/signup`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Origin': request.headers.get('origin') || 'http://localhost:3003'
-        },
-        body: JSON.stringify({
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          username: username.trim(),
-          password
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return NextResponse.json(
-          { error: errorData.error || "Erreur lors de la création du compte" },
-          { status: response.status }
-        );
-      }
-
-      return NextResponse.json({ success: true });
-    } catch (fetchError) {
-      console.error('Erreur de connexion au backend:', fetchError);
-      return NextResponse.json(
-        { error: "Impossible de se connecter au serveur. Veuillez réessayer." },
-        { status: 503 }
-      );
-    }
+    // Pour l'instant, on retourne un succès
+    // TODO: Implémenter la création d'utilisateur avec la base de données
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Erreur signup:', error);
     return NextResponse.json(

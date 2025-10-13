@@ -18,8 +18,8 @@ async function testCompleteMySQLSetup() {
 
     // Test 2: Vérifier les tables d'authentification
     console.log("\n🔐 Testing authentication tables...");
-    const [userRows] = await connection.execute("SELECT COUNT(*) as count FROM users");
-    console.log(`✅ Users table has ${userRows[0].count} entries`);
+    const [userRows] = await connection.execute("SELECT COUNT(*) as count FROM utilisateurs");
+    console.log(`✅ Utilisateurs table has ${userRows[0].count} entries`);
 
     const [sessionRows] = await connection.execute("SELECT COUNT(*) as count FROM sessions");
     console.log(`✅ Sessions table has ${sessionRows[0].count} entries`);
@@ -40,12 +40,12 @@ async function testCompleteMySQLSetup() {
     // Test 4: Vérifier l'utilisateur par défaut
     console.log("\n👤 Testing default user...");
     const [akramRows] = await connection.execute(
-      "SELECT username, first_name, last_name FROM users WHERE username = 'akram'"
+      "SELECT identifiant, prenom, nom FROM utilisateurs WHERE identifiant = 'akram'"
     );
     
     if (akramRows.length > 0) {
       console.log("✅ Default user 'akram' found");
-      console.log(`👤 User: ${akramRows[0].first_name} ${akramRows[0].last_name}`);
+      console.log(`👤 User: ${akramRows[0].prenom} ${akramRows[0].nom}`);
     } else {
       console.log("❌ Default user 'akram' not found");
     }
